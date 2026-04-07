@@ -10,6 +10,8 @@ let mainWindow = null;
 let backendProcess = null;
 const pendingRequests = new Map();
 const activeCodexTaskIds = new Set();
+let taskMonitorTimer = null;
+let lastTasksSignature = "";
 const CODEX_BINARY_CANDIDATES = [
   process.env.CODEX_BIN,
   "/opt/homebrew/bin/codex",
@@ -22,6 +24,8 @@ const COMMON_WORKSPACE_ROOT_NAMES = ["projects", "workspace", "workspaces", "cod
 const PERSONAL_AGENTS_FILE = "AGENTS.md";
 const PERSONAL_PROFILE_FILE = "profile.md";
 const APP_CONFIG_FILE = "config.json";
+const CODEX_RUNS_DIR = "runs";
+const TASK_MONITOR_INTERVAL_MS = 1500;
 
 function backendBinaryName() {
   return process.platform === "win32" ? "task-backend.exe" : "task-backend";
@@ -73,6 +77,14 @@ function personalProfilePath() {
 
 function appConfigPath() {
   return path.join(defaultCodexWorkspaceRoot(), APP_CONFIG_FILE);
+}
+
+function codexRunsPath() {
+  return path.join(defaultCodexWorkspaceRoot(), CODEX_RUNS_DIR);
+}
+
+function codexRunSpecPath(taskId) {
+  return path.join(codexRunsPath(), `${taskId}.json`);
 }
 
 function defaultAppConfig() {
@@ -624,11 +636,36 @@ async function readOptionalFile(filePath) {
 }
 
 function broadcastTasks(tasks) {
+  const signature = JSON.stringify(tasks);
+
+  if (signature === lastTasksSignature) {
+    return;
+  }
+
+  lastTasksSignature = signature;
+
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
   }
 
   mainWindow.webContents.send("tasks:updated", tasks);
+}
+
+function isCodexTaskActive(task) {
+  return task?.codex_status === "queued" || task?.codex_status === "running";
+}
+
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function appendCodexLog(id, chunk) {
@@ -652,6 +689,123 @@ async function failCodexTask(id, message) {
   return tasks;
 }
 
+async function buildDetachedRunnerSpec({ id, title, workspace, trigger = "manual" }) {
+  const codexCommand = await resolveCodexCommand();
+
+  if (!codexCommand) {
+    throw new Error("Codex CLI was not found on this machine.");
+  }
+
+  const runnerRoot = await ensureDirectory(defaultCodexWorkspaceRoot());
+  const personalization = await ensurePersonalizationFiles();
+  const resolvedWorkspace = workspace || (await resolveTaskWorkspace(title));
+  const targetWorkspace = resolvedWorkspace?.taskDir || null;
+  const backend = resolveBackendCommand();
+
+  return {
+    id,
+    title,
+    trigger,
+    codexCommand,
+    runnerRoot,
+    targetWorkspace,
+    workspaceRoot: resolvedWorkspace?.root || null,
+    workspaceSource: resolvedWorkspace?.source || "runner",
+    personalAgentsPath: personalization.agentsPath,
+    personalProfilePath: personalization.profilePath,
+    backendCommand: backend.command,
+    backendArgs: backend.args,
+  };
+}
+
+async function launchDetachedCodexRunner(task, trigger = "manual") {
+  const spec = await buildDetachedRunnerSpec({
+    ...task,
+    trigger,
+  });
+
+  await ensureDirectory(codexRunsPath());
+
+  const specPath = codexRunSpecPath(spec.id);
+  await fs.writeFile(specPath, JSON.stringify(spec, null, 2), "utf8");
+
+  const runnerScriptPath = path.join(app.getAppPath(), "electron", "codex-runner.js");
+  const child = spawn(process.execPath, [runnerScriptPath, specPath], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+    },
+  });
+
+  child.unref();
+
+  const tasks = await sendBackendRequest("codex_mark_queued", {
+    id: spec.id,
+    workspace: spec.targetWorkspace || spec.runnerRoot,
+    workspace_source: spec.workspaceSource,
+    runner_pid: child.pid || null,
+  });
+  broadcastTasks(tasks);
+  return tasks;
+}
+
+async function reconcileDetachedCodexTasks(tasks = null) {
+  let currentTasks = tasks || (await sendBackendRequest("list"));
+
+  for (const task of currentTasks) {
+    if (!isCodexTaskActive(task)) {
+      continue;
+    }
+
+    if (task.codex_runner_pid && isProcessAlive(task.codex_runner_pid)) {
+      continue;
+    }
+
+    currentTasks = await sendBackendRequest("codex_set_result", {
+      id: task.id,
+      success: false,
+      output: null,
+      error: "Codex session ended before the task completed.",
+    });
+  }
+
+  return currentTasks;
+}
+
+async function syncDetachedTaskState() {
+  if (!backendProcess) {
+    return;
+  }
+
+  let tasks = await sendBackendRequest("list");
+  tasks = await reconcileDetachedCodexTasks(tasks);
+  broadcastTasks(tasks);
+}
+
+function startTaskMonitor() {
+  if (taskMonitorTimer) {
+    return;
+  }
+
+  taskMonitorTimer = setInterval(() => {
+    void syncDetachedTaskState().catch((error) => {
+      console.error("Failed to sync detached Codex tasks:", error);
+    });
+  }, TASK_MONITOR_INTERVAL_MS);
+}
+
+function stopTaskMonitor() {
+  if (!taskMonitorTimer) {
+    return;
+  }
+
+  clearInterval(taskMonitorTimer);
+  taskMonitorTimer = null;
+}
+
 function startCodexTask(task, trigger = "manual") {
   if (activeCodexTaskIds.has(task.id)) {
     return sendBackendRequest("list");
@@ -659,10 +813,21 @@ function startCodexTask(task, trigger = "manual") {
 
   activeCodexTaskIds.add(task.id);
 
-  void executeCodexTask({
-    ...task,
-    trigger,
-  })
+  const startPromise = sendBackendRequest("list")
+    .then((tasks) => {
+      const existingTask = tasks.find((entry) => entry.id === task.id);
+
+      if (
+        existingTask &&
+        isCodexTaskActive(existingTask) &&
+        existingTask.codex_runner_pid &&
+        isProcessAlive(existingTask.codex_runner_pid)
+      ) {
+        return tasks;
+      }
+
+      return launchDetachedCodexRunner(task, trigger);
+    })
     .catch(async (error) => {
       const message =
         error instanceof Error ? error.message : "Codex execution failed.";
@@ -677,189 +842,7 @@ function startCodexTask(task, trigger = "manual") {
       activeCodexTaskIds.delete(task.id);
     });
 
-  return sendBackendRequest("list");
-}
-
-async function executeCodexTask({ id, title, workspace, trigger = "manual" }) {
-  const codexCommand = await resolveCodexCommand();
-
-  if (!codexCommand) {
-    throw new Error("Codex CLI was not found on this machine.");
-  }
-
-  const runnerRoot = await ensureDirectory(defaultCodexWorkspaceRoot());
-  const personalization = await loadPersonalizationContext();
-  const resolvedWorkspace = workspace || (await resolveTaskWorkspace(title));
-  const targetWorkspace = resolvedWorkspace?.taskDir || null;
-  const cwd = runnerRoot;
-  const extraWritableTarget =
-    Boolean(targetWorkspace) && isOutsideWorkspace(runnerRoot, targetWorkspace);
-  const sandboxMode = targetWorkspace ? "workspace-write" : "read-only";
-
-  const runningTasks = await sendBackendRequest("codex_mark_running", {
-    id,
-    workspace: targetWorkspace || runnerRoot,
-    workspace_source: resolvedWorkspace?.source || "runner",
-  });
-  broadcastTasks(runningTasks);
-
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "me-codex-"));
-  const outputFile = path.join(tempDir, "last-message.txt");
-  const prompt = buildCodexPrompt({
-    id,
-    title,
-    runnerRoot,
-    targetWorkspace,
-    workspaceSource: resolvedWorkspace?.source || "runner",
-    personalization,
-  });
-  let logQueue = Promise.resolve();
-
-  const queueLog = (chunk) => {
-    logQueue = logQueue
-      .then(() => appendCodexLog(id, chunk))
-      .catch((error) => {
-        console.error("Failed to append Codex log:", error);
-      });
-  };
-
-  queueLog(
-    `[trigger] ${trigger}\n[run] starting Codex\n[binary] ${codexCommand}\n[sandbox] ${sandboxMode}\n[runner-workspace] ${runnerRoot}\n[target-source] ${resolvedWorkspace?.source || "runner"}\n[target-root] ${resolvedWorkspace?.root || "not resolved"}\n[target-workspace] ${targetWorkspace || "not resolved"}\n[personal-agents] ${personalization.agentsPath}\n[personal-profile] ${personalization.profilePath}\n`,
-  );
-
-  const result = await new Promise((resolve) => {
-    const args = [
-      "exec",
-      "--json",
-      "--full-auto",
-      "--sandbox",
-      sandboxMode,
-      "--skip-git-repo-check",
-      "--color",
-      "never",
-      "-C",
-      cwd,
-      "-o",
-      outputFile,
-    ];
-
-    if (extraWritableTarget) {
-      args.push("--add-dir", targetWorkspace);
-    }
-
-    args.push(prompt);
-
-    const child = spawn(
-      codexCommand,
-      args,
-      {
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-
-    let stdoutBuffer = "";
-    let stderrBuffer = "";
-    let lastAgentMessage = null;
-    let settled = false;
-
-    const flushStdoutLines = (flushPartial = false) => {
-      const lines = stdoutBuffer.split(/\r?\n/);
-      stdoutBuffer = flushPartial ? "" : lines.pop() || "";
-
-      for (const line of flushPartial ? lines.filter(Boolean) : lines) {
-        if (!line.trim()) {
-          continue;
-        }
-
-        const { logLine, agentText } = formatCodexStdoutLine(line);
-
-        if (agentText) {
-          lastAgentMessage = agentText;
-        }
-
-        queueLog(logLine);
-      }
-    };
-
-    const flushStderrLines = (flushPartial = false) => {
-      const lines = stderrBuffer.split(/\r?\n/);
-      stderrBuffer = flushPartial ? "" : lines.pop() || "";
-
-      for (const line of flushPartial ? lines.filter(Boolean) : lines) {
-        if (!line.trim()) {
-          continue;
-        }
-
-        queueLog(`[stderr] ${line}\n`);
-      }
-    };
-
-    child.stdout.on("data", (chunk) => {
-      stdoutBuffer += chunk.toString();
-      flushStdoutLines();
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderrBuffer += chunk.toString();
-      flushStderrLines();
-    });
-
-    child.on("error", (error) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      queueLog(`[error] ${error.message}\n`);
-      resolve({
-        success: false,
-        output: null,
-        error: error.message,
-      });
-    });
-
-    child.on("exit", async (code, signal) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      flushStdoutLines(true);
-      flushStderrLines(true);
-
-      const lastMessage = normalizeText(await readOptionalFile(outputFile));
-      const output = lastMessage || lastAgentMessage;
-      const error =
-        code === 0
-          ? null
-          : `Codex exited with code ${code ?? "null"}${signal ? ` and signal ${signal}` : ""}`;
-
-      if (error) {
-        queueLog(`[exit] ${error}\n`);
-      } else {
-        queueLog("[exit] completed\n");
-      }
-
-      resolve({
-        success: code === 0,
-        output,
-        error,
-      });
-    });
-  }).finally(async () => {
-    await logQueue;
-    await fs.rm(tempDir, { recursive: true, force: true });
-  });
-
-  const finalTasks = await sendBackendRequest("codex_set_result", {
-    id,
-    success: result.success,
-    output: result.output,
-    error: result.error,
-  });
-
-  broadcastTasks(finalTasks);
-  return finalTasks;
+  return startPromise;
 }
 
 function startBackend() {
@@ -962,9 +945,11 @@ function registerIpcHandlers() {
 
     const task = tasks[0];
     if (task) {
-      startCodexTask({ id: task.id, title: task.title }, "auto").catch((error) => {
+      try {
+        return await startCodexTask({ id: task.id, title: task.title }, "auto");
+      } catch (error) {
         console.error("Failed to start Codex task:", error);
-      });
+      }
     }
 
     return tasks;
@@ -1007,7 +992,11 @@ function createWindow() {
 app.whenReady().then(() => {
   startBackend();
   registerIpcHandlers();
+  startTaskMonitor();
   createWindow();
+  void syncDetachedTaskState().catch((error) => {
+    console.error("Failed to initialize detached Codex task sync:", error);
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -1023,5 +1012,6 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  stopTaskMonitor();
   stopBackend();
 });
