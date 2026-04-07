@@ -1,0 +1,82 @@
+name: Task
+description: Create a scoped work item with plan, acceptance criteria, and verification.
+title: "[TASK] "
+labels:
+  - task
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What should change?
+      placeholder: Describe the task in one or two sentences.
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Why is this task needed?
+      placeholder: Explain the user problem, bug, or improvement.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in scope and out of scope?
+      placeholder: |
+        In scope:
+        - ...
+
+        Out of scope:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: plan
+    attributes:
+      label: Plan
+      description: Write the implementation plan before starting work.
+      value: |
+        - Understand the current behavior
+        - Identify the minimum file set to change
+        - Implement the change
+        - Verify the result
+        - Note follow-up work
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: What must be true when this task is done?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Which commands or checks will prove the change works?
+      placeholder: |
+        - npm run test:backend
+        - node --check src/renderer.js
+        - manual UI check
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / Notes
+      description: Capture edge cases, migration notes, or blockers.
+      placeholder: List any risks, assumptions, or follow-up items.
+

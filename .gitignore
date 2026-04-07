@@ -1,0 +1,6 @@
+node_modules/
+dist/
+rust-backend/target/
+.me/
+.DS_Store
+npm-debug.log*
