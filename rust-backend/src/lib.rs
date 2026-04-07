@@ -1,8 +1,10 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use directories::ProjectDirs;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -40,6 +42,8 @@ pub struct Task {
     pub codex_workspace: Option<String>,
     #[serde(default)]
     pub codex_workspace_source: Option<String>,
+    #[serde(default)]
+    pub codex_runner_pid: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -64,43 +68,42 @@ impl TaskStore {
     }
 
     pub fn list(&self) -> Result<Vec<Task>> {
-        let state = self.read_state()?;
-        Ok(Self::sort_tasks(state.tasks))
+        self.with_state_read(|state| Ok(Self::sort_tasks(state.tasks.clone())))
     }
 
     pub fn add(&self, title: &str, import_type: Option<&str>) -> Result<Vec<Task>> {
-        let mut state = self.read_state()?;
-        state
-            .tasks
-            .push(Self::build_task(title, import_type, "quick-add")?);
-        self.write_state(&state)?;
-        Ok(Self::sort_tasks(state.tasks))
+        self.with_state_write(|state| {
+            state
+                .tasks
+                .push(Self::build_task(title, import_type, "quick-add")?);
+            Ok(Self::sort_tasks(state.tasks.clone()))
+        })
     }
 
     pub fn complete(&self, id: &str) -> Result<Vec<Task>> {
-        let mut state = self.read_state()?;
-        let task = state
-            .tasks
-            .iter_mut()
-            .find(|task| task.id == id)
-            .ok_or_else(|| anyhow!("Task not found"))?;
+        self.with_state_write(|state| {
+            let task = state
+                .tasks
+                .iter_mut()
+                .find(|task| task.id == id)
+                .ok_or_else(|| anyhow!("Task not found"))?;
 
-        task.completed = true;
-        self.write_state(&state)?;
-        Ok(Self::sort_tasks(state.tasks))
+            task.completed = true;
+            Ok(Self::sort_tasks(state.tasks.clone()))
+        })
     }
 
     pub fn delete(&self, id: &str) -> Result<Vec<Task>> {
-        let mut state = self.read_state()?;
-        let original_len = state.tasks.len();
-        state.tasks.retain(|task| task.id != id);
+        self.with_state_write(|state| {
+            let original_len = state.tasks.len();
+            state.tasks.retain(|task| task.id != id);
 
-        if state.tasks.len() == original_len {
-            return Err(anyhow!("Task not found"));
-        }
+            if state.tasks.len() == original_len {
+                return Err(anyhow!("Task not found"));
+            }
 
-        self.write_state(&state)?;
-        Ok(Self::sort_tasks(state.tasks))
+            Ok(Self::sort_tasks(state.tasks.clone()))
+        })
     }
 
     pub fn mark_codex_queued(
@@ -108,23 +111,25 @@ impl TaskStore {
         id: &str,
         workspace: Option<&str>,
         workspace_source: Option<&str>,
+        runner_pid: Option<u32>,
     ) -> Result<Vec<Task>> {
-        let mut state = self.read_state()?;
-        let task = state
-            .tasks
-            .iter_mut()
-            .find(|task| task.id == id)
-            .ok_or_else(|| anyhow!("Task not found"))?;
+        self.with_state_write(|state| {
+            let task = state
+                .tasks
+                .iter_mut()
+                .find(|task| task.id == id)
+                .ok_or_else(|| anyhow!("Task not found"))?;
 
-        task.codex_status = "queued".to_owned();
-        task.codex_last_output = None;
-        task.codex_last_error = None;
-        task.codex_log = None;
-        task.codex_workspace = workspace.map(str::to_owned);
-        task.codex_workspace_source = workspace_source.map(str::to_owned);
+            task.codex_status = "queued".to_owned();
+            task.codex_last_output = None;
+            task.codex_last_error = None;
+            task.codex_log = None;
+            task.codex_workspace = workspace.map(str::to_owned);
+            task.codex_workspace_source = workspace_source.map(str::to_owned);
+            task.codex_runner_pid = runner_pid;
 
-        self.write_state(&state)?;
-        Ok(Self::sort_tasks(state.tasks))
+            Ok(Self::sort_tasks(state.tasks.clone()))
+        })
     }
 
     pub fn mark_codex_running(
@@ -132,47 +137,49 @@ impl TaskStore {
         id: &str,
         workspace: Option<&str>,
         workspace_source: Option<&str>,
+        runner_pid: Option<u32>,
     ) -> Result<Vec<Task>> {
-        let mut state = self.read_state()?;
-        let task = state
-            .tasks
-            .iter_mut()
-            .find(|task| task.id == id)
-            .ok_or_else(|| anyhow!("Task not found"))?;
+        self.with_state_write(|state| {
+            let task = state
+                .tasks
+                .iter_mut()
+                .find(|task| task.id == id)
+                .ok_or_else(|| anyhow!("Task not found"))?;
 
-        task.codex_status = "running".to_owned();
-        task.codex_last_run_at = Some(Utc::now().to_rfc3339());
-        task.codex_last_output = None;
-        task.codex_last_error = None;
-        task.codex_log = None;
-        task.codex_workspace = workspace.map(str::to_owned);
-        task.codex_workspace_source = workspace_source.map(str::to_owned);
+            task.codex_status = "running".to_owned();
+            task.codex_last_run_at = Some(Utc::now().to_rfc3339());
+            task.codex_last_output = None;
+            task.codex_last_error = None;
+            task.codex_log = None;
+            task.codex_workspace = workspace.map(str::to_owned);
+            task.codex_workspace_source = workspace_source.map(str::to_owned);
+            task.codex_runner_pid = runner_pid;
 
-        self.write_state(&state)?;
-        Ok(Self::sort_tasks(state.tasks))
+            Ok(Self::sort_tasks(state.tasks.clone()))
+        })
     }
 
     pub fn append_codex_log(&self, id: &str, chunk: &str) -> Result<Vec<Task>> {
-        let mut state = self.read_state()?;
-        let task = state
-            .tasks
-            .iter_mut()
-            .find(|task| task.id == id)
-            .ok_or_else(|| anyhow!("Task not found"))?;
+        self.with_state_write(|state| {
+            let task = state
+                .tasks
+                .iter_mut()
+                .find(|task| task.id == id)
+                .ok_or_else(|| anyhow!("Task not found"))?;
 
-        if chunk.is_empty() {
-            return Ok(Self::sort_tasks(state.tasks));
-        }
+            if chunk.is_empty() {
+                return Ok(Self::sort_tasks(state.tasks.clone()));
+            }
 
-        let next = match &task.codex_log {
-            Some(current) => format!("{current}{chunk}"),
-            None => chunk.to_owned(),
-        };
+            let next = match &task.codex_log {
+                Some(current) => format!("{current}{chunk}"),
+                None => chunk.to_owned(),
+            };
 
-        task.codex_log = Some(Self::truncate_tail(&next, 12_000));
+            task.codex_log = Some(Self::truncate_tail(&next, 12_000));
 
-        self.write_state(&state)?;
-        Ok(Self::sort_tasks(state.tasks))
+            Ok(Self::sort_tasks(state.tasks.clone()))
+        })
     }
 
     pub fn set_codex_result(
@@ -182,49 +189,100 @@ impl TaskStore {
         output: Option<&str>,
         error: Option<&str>,
     ) -> Result<Vec<Task>> {
-        let mut state = self.read_state()?;
-        let task = state
-            .tasks
-            .iter_mut()
-            .find(|task| task.id == id)
-            .ok_or_else(|| anyhow!("Task not found"))?;
+        self.with_state_write(|state| {
+            let task = state
+                .tasks
+                .iter_mut()
+                .find(|task| task.id == id)
+                .ok_or_else(|| anyhow!("Task not found"))?;
 
-        task.codex_status = if success { "succeeded" } else { "failed" }.to_owned();
-        task.codex_last_run_at = Some(Utc::now().to_rfc3339());
-        task.codex_last_output = output.map(|value| Self::truncate_text(value, 4_000));
-        task.codex_last_error = error.map(|value| Self::truncate_text(value, 2_000));
+            task.codex_status = if success { "succeeded" } else { "failed" }.to_owned();
+            task.codex_last_run_at = Some(Utc::now().to_rfc3339());
+            task.codex_last_output = output.map(|value| Self::truncate_text(value, 4_000));
+            task.codex_last_error = error.map(|value| Self::truncate_text(value, 2_000));
+            task.codex_runner_pid = None;
 
-        self.write_state(&state)?;
-        Ok(Self::sort_tasks(state.tasks))
+            Ok(Self::sort_tasks(state.tasks.clone()))
+        })
     }
 
-    fn read_state(&self) -> Result<TaskState> {
-        if !self.file_path.exists() {
-            return Ok(TaskState::default());
+    fn with_state_read<T>(&self, operation: impl FnOnce(&TaskState) -> Result<T>) -> Result<T> {
+        let mut file = self.open_state_file()?;
+        file.lock_exclusive()
+            .with_context(|| format!("failed to lock {}", self.file_path.display()))?;
+
+        let result = (|| {
+            let state = self.read_state_from_file(&mut file)?;
+            operation(&state)
+        })();
+
+        file.unlock()
+            .with_context(|| format!("failed to unlock {}", self.file_path.display()))?;
+
+        result
+    }
+
+    fn with_state_write<T>(
+        &self,
+        operation: impl FnOnce(&mut TaskState) -> Result<T>,
+    ) -> Result<T> {
+        let mut file = self.open_state_file()?;
+        file.lock_exclusive()
+            .with_context(|| format!("failed to lock {}", self.file_path.display()))?;
+
+        let result = (|| {
+            let mut state = self.read_state_from_file(&mut file)?;
+            let output = operation(&mut state)?;
+            self.write_state_to_file(&mut file, &state)?;
+            Ok(output)
+        })();
+
+        file.unlock()
+            .with_context(|| format!("failed to unlock {}", self.file_path.display()))?;
+
+        result
+    }
+
+    fn open_state_file(&self) -> Result<File> {
+        if let Some(parent) = self.file_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
         }
 
-        let raw = fs::read_to_string(&self.file_path)
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&self.file_path)
+            .with_context(|| format!("failed to open {}", self.file_path.display()))
+    }
+
+    fn read_state_from_file(&self, file: &mut File) -> Result<TaskState> {
+        file.seek(SeekFrom::Start(0))
+            .with_context(|| format!("failed to seek {}", self.file_path.display()))?;
+
+        let mut raw = String::new();
+        file.read_to_string(&mut raw)
             .with_context(|| format!("failed to read {}", self.file_path.display()))?;
 
         if raw.trim().is_empty() {
             return Ok(TaskState::default());
         }
 
-        let state = serde_json::from_str::<TaskState>(&raw)
-            .with_context(|| format!("failed to parse {}", self.file_path.display()))?;
-
-        Ok(state)
+        serde_json::from_str::<TaskState>(&raw)
+            .with_context(|| format!("failed to parse {}", self.file_path.display()))
     }
 
-    fn write_state(&self, state: &TaskState) -> Result<()> {
-        if let Some(parent) = self.file_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
-
-        let body = serde_json::to_string_pretty(state)?;
-        fs::write(&self.file_path, body)
-            .with_context(|| format!("failed to write {}", self.file_path.display()))?;
+    fn write_state_to_file(&self, file: &mut File, state: &TaskState) -> Result<()> {
+        file.set_len(0)
+            .with_context(|| format!("failed to truncate {}", self.file_path.display()))?;
+        file.seek(SeekFrom::Start(0))
+            .with_context(|| format!("failed to seek {}", self.file_path.display()))?;
+        serde_json::to_writer_pretty(&mut *file, state)?;
+        file.write_all(b"\n")
+            .with_context(|| format!("failed to finalize {}", self.file_path.display()))?;
+        file.flush()
+            .with_context(|| format!("failed to flush {}", self.file_path.display()))?;
 
         Ok(())
     }
@@ -253,6 +311,7 @@ impl TaskStore {
             codex_log: default_codex_log(),
             codex_workspace: None,
             codex_workspace_source: None,
+            codex_runner_pid: None,
         })
     }
 
@@ -329,6 +388,7 @@ mod tests {
         assert_eq!(tasks[0].codex_status, "idle");
         assert!(tasks[0].codex_log.is_none());
         assert!(tasks[0].codex_workspace.is_none());
+        assert!(tasks[0].codex_runner_pid.is_none());
     }
 
     #[test]
@@ -422,17 +482,19 @@ mod tests {
         let task_id = tasks[0].id.clone();
 
         let queued = store
-            .mark_codex_queued(&task_id, Some("/tmp/workspace"), Some("matched"))
+            .mark_codex_queued(&task_id, Some("/tmp/workspace"), Some("matched"), Some(1234))
             .unwrap();
         assert_eq!(queued[0].codex_status, "queued");
         assert_eq!(queued[0].codex_workspace.as_deref(), Some("/tmp/workspace"));
+        assert_eq!(queued[0].codex_runner_pid, Some(1234));
 
         let running = store
-            .mark_codex_running(&task_id, Some("/tmp/workspace"), Some("matched"))
+            .mark_codex_running(&task_id, Some("/tmp/workspace"), Some("matched"), Some(4321))
             .unwrap();
         assert_eq!(running[0].codex_status, "running");
         assert_eq!(running[0].codex_workspace.as_deref(), Some("/tmp/workspace"));
         assert_eq!(running[0].codex_workspace_source.as_deref(), Some("matched"));
+        assert_eq!(running[0].codex_runner_pid, Some(4321));
 
         let logged = store.append_codex_log(&task_id, "[stdout] connected\n").unwrap();
         assert_eq!(logged[0].codex_log.as_deref(), Some("[stdout] connected\n"));
@@ -444,5 +506,6 @@ mod tests {
         assert_eq!(completed[0].codex_status, "succeeded");
         assert_eq!(completed[0].codex_last_output.as_deref(), Some("Done"));
         assert_eq!(completed[0].codex_log.as_deref(), Some("[stdout] connected\n"));
+        assert!(completed[0].codex_runner_pid.is_none());
     }
 }

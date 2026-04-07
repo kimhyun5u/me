@@ -32,6 +32,8 @@ enum Command {
         workspace: Option<String>,
         #[serde(default)]
         workspace_source: Option<String>,
+        #[serde(default)]
+        runner_pid: Option<u32>,
     },
     #[serde(rename = "codex_mark_running")]
     CodexMarkRunning {
@@ -40,6 +42,8 @@ enum Command {
         workspace: Option<String>,
         #[serde(default)]
         workspace_source: Option<String>,
+        #[serde(default)]
+        runner_pid: Option<u32>,
     },
     #[serde(rename = "codex_append_log")]
     CodexAppendLog { id: String, chunk: String },
@@ -89,19 +93,23 @@ fn main() -> Result<()> {
                         id,
                         workspace,
                         workspace_source,
+                        runner_pid,
                     } => store.mark_codex_queued(
                         &id,
                         workspace.as_deref(),
                         workspace_source.as_deref(),
+                        runner_pid,
                     ),
                     Command::CodexMarkRunning {
                         id,
                         workspace,
                         workspace_source,
+                        runner_pid,
                     } => store.mark_codex_running(
                         &id,
                         workspace.as_deref(),
                         workspace_source.as_deref(),
+                        runner_pid,
                     ),
                     Command::CodexAppendLog { id, chunk } => store.append_codex_log(&id, &chunk),
                     Command::CodexSetResult {
