@@ -3,6 +3,8 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
+const TOOLBOX_SHORTCUTS = ["open", "done", "queued", "running", "succeeded", "failed"];
+
 function npmCommand() {
   return process.platform === "win32" ? "npm.cmd" : "npm";
 }
@@ -197,6 +199,85 @@ function buildTask({
   };
 }
 
+function shortcutDefaults(shortcut) {
+  switch (shortcut) {
+    case "open":
+      return {
+        title: "Emulator open task",
+        completed: false,
+        codexStatus: "idle",
+        lastOutput: null,
+        lastError: null,
+        log: null,
+      };
+    case "done":
+      return {
+        title: "Emulator completed task",
+        completed: true,
+        codexStatus: "idle",
+        lastOutput: null,
+        lastError: null,
+        log: null,
+      };
+    case "queued":
+      return {
+        title: "Emulator queued task",
+        completed: false,
+        codexStatus: "queued",
+        lastOutput: null,
+        lastError: null,
+        log: "[message] Waiting in emulator queue\n",
+      };
+    case "running":
+      return {
+        title: "Emulator running task",
+        completed: false,
+        codexStatus: "running",
+        lastOutput: null,
+        lastError: null,
+        log: "[message] Emulator running step 1\n[message] Emulator running step 2\n",
+      };
+    case "succeeded":
+      return {
+        title: "Emulator succeeded task",
+        completed: false,
+        codexStatus: "succeeded",
+        lastOutput: "Emulator success output.",
+        lastError: null,
+        log: "[message] Emulator finished successfully\n",
+      };
+    case "failed":
+      return {
+        title: "Emulator failed task",
+        completed: false,
+        codexStatus: "failed",
+        lastOutput: null,
+        lastError: "Emulator failure output.",
+        log: "[message] Emulator failed on purpose\n",
+      };
+    default:
+      throw new Error(`Unknown emulator shortcut: ${shortcut}`);
+  }
+}
+
+function buildShortcutTask({ shortcut, title, runnerPid = null, createdAt = isoDateWithOffset(0) }) {
+  const preset = shortcutDefaults(shortcut);
+
+  return {
+    ...buildTask({
+      title: title?.trim() || preset.title,
+      completed: preset.completed,
+      createdAt,
+      codexStatus: preset.codexStatus,
+      lastOutput: preset.lastOutput,
+      lastError: preset.lastError,
+      log: preset.log,
+    }),
+    codex_runner_pid:
+      preset.codexStatus === "queued" || preset.codexStatus === "running" ? runnerPid : null,
+  };
+}
+
 function buildSeedTasks(seed = "demo") {
   switch (seed) {
     case "empty":
@@ -270,6 +351,9 @@ function parseEmulatorArgs(argv) {
 
 async function prepareEmulator({ profile = "slow", seed = "demo" } = {}) {
   const sandbox = await prepareSandbox("me-emulator-");
+  sandbox.env.ME_EMULATOR = "1";
+  sandbox.env.ME_EMULATOR_PROFILE = profile;
+  sandbox.env.ME_EMULATOR_SEED = seed;
 
   if (profile === "missing") {
     sandbox.profileLabel = "missing";
@@ -294,7 +378,9 @@ async function prepareEmulator({ profile = "slow", seed = "demo" } = {}) {
 }
 
 module.exports = {
+  TOOLBOX_SHORTCUTS,
   buildSeedTasks,
+  buildShortcutTask,
   createFakeCodexBinary,
   ensureDirectory,
   npmCommand,

@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
 const codexEnv = require("./codex-env");
+const emulatorLib = require("../scripts/me-emulator-lib");
 
 let mainWindow = null;
 let backendProcess = null;
@@ -462,6 +463,49 @@ async function connectCodexBinary() {
   return buildCodexInfo();
 }
 
+function isEmulatorMode() {
+  return process.env.ME_EMULATOR === "1";
+}
+
+async function replaceAllTasks(tasks) {
+  const nextTasks = await sendBackendRequest("replace_all", { tasks });
+  broadcastTasks(nextTasks);
+  return nextTasks;
+}
+
+async function runEmulatorAction({ action, title }) {
+  if (!isEmulatorMode()) {
+    throw new Error("Emulator toolbox is only available in emulator mode.");
+  }
+
+  if (action === "seed-demo") {
+    return replaceAllTasks(emulatorLib.buildSeedTasks("demo"));
+  }
+
+  if (action === "clear-all") {
+    return replaceAllTasks([]);
+  }
+
+  if (!action.startsWith("add-")) {
+    throw new Error(`Unknown emulator action: ${action}`);
+  }
+
+  const shortcut = action.slice(4);
+
+  if (!emulatorLib.TOOLBOX_SHORTCUTS.includes(shortcut)) {
+    throw new Error(`Unknown emulator shortcut: ${shortcut}`);
+  }
+
+  const currentTasks = await sendBackendRequest("list");
+  const nextTask = emulatorLib.buildShortcutTask({
+    shortcut,
+    title,
+    runnerPid: process.pid,
+  });
+
+  return replaceAllTasks([nextTask, ...currentTasks]);
+}
+
 function compactPromptText(value, maxChars = 4_000) {
   const trimmed = value.trim();
 
@@ -913,6 +957,7 @@ function registerIpcHandlers() {
     sendBackendRequest("delete", { id }),
   );
   ipcMain.handle("tasks:run-codex", (_event, payload) => startCodexTask(payload));
+  ipcMain.handle("emulator:action", (_event, payload) => runEmulatorAction(payload));
   ipcMain.handle("codex:info", () => buildCodexInfo());
   ipcMain.handle("codex:connect", async () => {
     const info = await connectCodexBinary();

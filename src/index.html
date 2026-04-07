@@ -81,6 +81,45 @@
           <ul id="task-list" class="task-list"></ul>
         </section>
       </main>
+
+      <aside id="emulator-toolbox" class="toolbox-panel" hidden>
+        <div class="toolbox-header">
+          <div>
+            <h2>Toolbox</h2>
+            <p id="toolbox-meta" class="toolbox-meta"></p>
+          </div>
+        </div>
+
+        <label class="toolbox-input-shell" for="toolbox-text">
+          <span>Title</span>
+          <input
+            id="toolbox-text"
+            name="toolbox-text"
+            type="text"
+            maxlength="160"
+            placeholder="Emulator task"
+            autocomplete="off"
+          />
+        </label>
+
+        <div class="toolbox-grid">
+          <button class="toolbox-button" type="button" data-action="add-open">Open</button>
+          <button class="toolbox-button" type="button" data-action="add-done">Done</button>
+          <button class="toolbox-button" type="button" data-action="add-queued">Queued</button>
+          <button class="toolbox-button" type="button" data-action="add-running">Running</button>
+          <button class="toolbox-button" type="button" data-action="add-succeeded">
+            Succeeded
+          </button>
+          <button class="toolbox-button" type="button" data-action="add-failed">Failed</button>
+        </div>
+
+        <div class="toolbox-grid toolbox-grid-secondary">
+          <button class="toolbox-button" type="button" data-action="seed-demo">Seed Demo</button>
+          <button class="toolbox-button is-danger" type="button" data-action="clear-all">
+            Clear
+          </button>
+        </div>
+      </aside>
     </div>
 
     <template id="task-template">
