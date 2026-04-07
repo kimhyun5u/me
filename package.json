@@ -10,6 +10,10 @@
     "build:backend:dev": "cargo build --manifest-path rust-backend/Cargo.toml",
     "build:backend:release": "cargo build --release --manifest-path rust-backend/Cargo.toml",
     "test:backend": "cargo test --manifest-path rust-backend/Cargo.toml",
+    "test:scenarios": "node --test test/codex-env.test.js",
+    "scenario:codex-missing": "node scripts/launch-codex-scenario.js codex-missing",
+    "scenario:codex-broken-config": "node scripts/launch-codex-scenario.js codex-broken-config",
+    "scenario:codex-fake": "node scripts/launch-codex-scenario.js codex-fake",
     "dist:mac": "npm run build:backend:release && electron-builder --mac",
     "dist:win": "npm run build:backend:release && electron-builder --win"
   },

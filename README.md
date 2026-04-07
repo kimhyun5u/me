@@ -62,6 +62,24 @@ The `dev` script builds the Rust backend in debug mode and then launches Electro
 npm run test:backend
 ```
 
+## Test Codex scenarios
+
+Automated environment checks:
+
+```bash
+npm run test:scenarios
+```
+
+Manual isolated app scenarios:
+
+```bash
+npm run scenario:codex-missing
+npm run scenario:codex-broken-config
+npm run scenario:codex-fake
+```
+
+These scenario launchers use a temporary `ME_HOME_DIR` so you can test Codex setup states without touching your real `~/.me`.
+
 ## Package the desktop app
 
 Build the release Rust binary first and package per target OS:

@@ -5,6 +5,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
+const codexEnv = require("./codex-env");
 
 let mainWindow = null;
 let backendProcess = null;
@@ -12,18 +13,7 @@ const pendingRequests = new Map();
 const activeCodexTaskIds = new Set();
 let taskMonitorTimer = null;
 let lastTasksSignature = "";
-const CODEX_BINARY_CANDIDATES = [
-  process.env.CODEX_BIN,
-  "/opt/homebrew/bin/codex",
-  "/usr/local/bin/codex",
-  path.join(os.homedir(), ".local", "bin", "codex"),
-  path.join(os.homedir(), "bin", "codex"),
-  "codex",
-].filter(Boolean);
 const COMMON_WORKSPACE_ROOT_NAMES = ["projects", "workspace", "workspaces", "code", "dev"];
-const PERSONAL_AGENTS_FILE = "AGENTS.md";
-const PERSONAL_PROFILE_FILE = "profile.md";
-const APP_CONFIG_FILE = "config.json";
 const CODEX_RUNS_DIR = "runs";
 const TASK_MONITOR_INTERVAL_MS = 1500;
 
@@ -59,24 +49,35 @@ function rejectAllPending(message) {
 }
 
 function defaultCodexWorkspaceRoot() {
-  return path.join(app.getPath("home"), ".me");
+  return codexEnv.defaultCodexWorkspaceRoot({
+    app,
+    env: process.env,
+  });
 }
 
 async function ensureDirectory(dirPath) {
-  await fs.mkdir(dirPath, { recursive: true });
-  return dirPath;
+  return codexEnv.ensureDirectory(dirPath);
 }
 
 function personalAgentsPath() {
-  return path.join(defaultCodexWorkspaceRoot(), PERSONAL_AGENTS_FILE);
+  return codexEnv.personalAgentsPath({
+    app,
+    env: process.env,
+  });
 }
 
 function personalProfilePath() {
-  return path.join(defaultCodexWorkspaceRoot(), PERSONAL_PROFILE_FILE);
+  return codexEnv.personalProfilePath({
+    app,
+    env: process.env,
+  });
 }
 
 function appConfigPath() {
-  return path.join(defaultCodexWorkspaceRoot(), APP_CONFIG_FILE);
+  return codexEnv.appConfigPath({
+    app,
+    env: process.env,
+  });
 }
 
 function codexRunsPath() {
@@ -88,9 +89,7 @@ function codexRunSpecPath(taskId) {
 }
 
 function defaultAppConfig() {
-  return {
-    codexBin: null,
-  };
+  return codexEnv.defaultAppConfig();
 }
 
 function defaultPersonalAgentsTemplate() {
@@ -154,47 +153,24 @@ async function ensureFile(filePath, body) {
 }
 
 async function ensurePersonalizationFiles() {
-  const root = await ensureDirectory(defaultCodexWorkspaceRoot());
-  const agentsPath = personalAgentsPath();
-  const profilePath = personalProfilePath();
-
-  await ensureFile(agentsPath, defaultPersonalAgentsTemplate());
-  await ensureFile(profilePath, defaultPersonalProfileTemplate());
-
-  return {
-    root,
-    agentsPath,
-    profilePath,
-  };
+  return codexEnv.ensurePersonalizationFiles({
+    app,
+    env: process.env,
+  });
 }
 
 async function readAppConfig() {
-  try {
-    const raw = await fs.readFile(appConfigPath(), "utf8");
-    const parsed = JSON.parse(raw);
-    return {
-      ...defaultAppConfig(),
-      ...parsed,
-    };
-  } catch {
-    return defaultAppConfig();
-  }
+  return codexEnv.readAppConfig({
+    app,
+    env: process.env,
+  });
 }
 
 async function writeAppConfig(config) {
-  await ensureDirectory(defaultCodexWorkspaceRoot());
-  await fs.writeFile(
-    appConfigPath(),
-    JSON.stringify(
-      {
-        ...defaultAppConfig(),
-        ...config,
-      },
-      null,
-      2,
-    ),
-    "utf8",
-  );
+  return codexEnv.writeAppConfig(config, {
+    app,
+    env: process.env,
+  });
 }
 
 async function isDirectory(dirPath) {
@@ -440,41 +416,17 @@ function isOutsideWorkspace(root, target) {
 }
 
 async function resolveCodexCommand() {
-  const config = await readAppConfig();
-  const candidates = [config.codexBin, ...CODEX_BINARY_CANDIDATES].filter(Boolean);
-
-  for (const candidate of candidates) {
-    const resolved = await new Promise((resolve) => {
-      const probe = spawn(candidate, ["--version"], {
-        stdio: "ignore",
-      });
-
-      probe.on("error", () => resolve(null));
-      probe.on("exit", (code) => resolve(code === 0 ? candidate : null));
-    });
-
-    if (resolved) {
-      return resolved;
-    }
-  }
-
-  return null;
+  return codexEnv.resolveCodexCommand({
+    app,
+    env: process.env,
+  });
 }
 
 async function buildCodexInfo() {
-  const command = await resolveCodexCommand();
-  const personalization = await ensurePersonalizationFiles();
-  const config = await readAppConfig();
-
-  return {
-    available: Boolean(command),
-    command,
-    configuredCommand: config.codexBin,
-    defaultWorkspace: personalization.root,
-    personalAgentsPath: personalization.agentsPath,
-    personalProfilePath: personalization.profilePath,
-    appConfigPath: appConfigPath(),
-  };
+  return codexEnv.buildCodexInfo({
+    app,
+    env: process.env,
+  });
 }
 
 async function connectCodexBinary() {
