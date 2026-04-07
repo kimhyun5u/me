@@ -29,9 +29,11 @@ For future user requests in this repository, the default workflow is:
 3. Create a branch that references the issue number.
 4. Implement the change.
 5. Run the smallest relevant verification.
-6. Open a PR if the work should be reviewed.
+6. Open a PR with the implemented change.
+7. Merge the PR after verification unless the user explicitly asks to stop before merge.
 
 If GitHub is available, prefer creating a real issue in `kimhyun5u/me` instead of keeping the work only in local notes.
+Treat issue creation, branch work, PR creation, and merge as the default saved workflow for user requests in this repo.
 
 ## Task Plan Template
 
