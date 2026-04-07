@@ -96,6 +96,8 @@ The default emulator profile uses a slow fake-success Codex flow and seeds demo 
 node scripts/launch-me-emulator.js --profile ready --seed demo --keep-sandbox
 ```
 
+In emulator mode, the app shows a right-side toolbox with quick status shortcuts and reset actions so you can seed or mutate test tasks from the UI.
+
 Available emulator profiles:
 
 - `missing`: no Codex available

@@ -115,6 +115,13 @@ impl TaskStore {
         })
     }
 
+    pub fn replace_all(&self, tasks: Vec<Task>) -> Result<Vec<Task>> {
+        self.with_state_write(|state| {
+            state.tasks = tasks;
+            Ok(Self::sort_tasks(state.tasks.clone()))
+        })
+    }
+
     pub fn mark_codex_queued(
         &self,
         id: &str,
@@ -424,6 +431,38 @@ mod tests {
         let updated = store.delete(&task_id).unwrap();
 
         assert!(updated.is_empty());
+    }
+
+    #[test]
+    fn replaces_all_tasks() {
+        let dir = tempdir().unwrap();
+        let store = TaskStore::new(dir.path().join("tasks.json"));
+
+        let tasks = store.add("Original task", None).unwrap();
+        let replacement = super::Task {
+            id: "replacement-1".to_owned(),
+            title: "Replacement task".to_owned(),
+            completed: true,
+            created_at: "2026-04-07T00:00:00Z".to_owned(),
+            import_type: "quick-add".to_owned(),
+            codex_status: "failed".to_owned(),
+            codex_last_run_at: None,
+            codex_last_output: None,
+            codex_last_error: Some("Mock error".to_owned()),
+            codex_log: Some("[message] replaced\n".to_owned()),
+            codex_workspace: None,
+            codex_workspace_source: None,
+            codex_runner_pid: None,
+        };
+
+        assert_eq!(tasks.len(), 1);
+
+        let replaced = store.replace_all(vec![replacement]).unwrap();
+
+        assert_eq!(replaced.len(), 1);
+        assert_eq!(replaced[0].title, "Replacement task");
+        assert!(replaced[0].completed);
+        assert_eq!(replaced[0].codex_status, "failed");
     }
 
     #[test]

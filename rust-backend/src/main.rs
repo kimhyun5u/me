@@ -25,6 +25,8 @@ enum Command {
     Complete { id: String },
     #[serde(rename = "delete")]
     Delete { id: String },
+    #[serde(rename = "replace_all")]
+    ReplaceAll { tasks: Vec<Task> },
     #[serde(rename = "codex_mark_queued")]
     CodexMarkQueued {
         id: String,
@@ -89,6 +91,7 @@ fn main() -> Result<()> {
                     }
                     Command::Complete { id } => store.complete(&id),
                     Command::Delete { id } => store.delete(&id),
+                    Command::ReplaceAll { tasks } => store.replace_all(tasks),
                     Command::CodexMarkQueued {
                         id,
                         workspace,

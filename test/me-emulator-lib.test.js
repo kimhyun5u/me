@@ -4,7 +4,9 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 
 const {
+  TOOLBOX_SHORTCUTS,
   buildSeedTasks,
+  buildShortcutTask,
   parseEmulatorArgs,
   prepareCodexScenario,
   prepareEmulator,
@@ -36,6 +38,30 @@ test("buildSeedTasks returns demo fixtures", () => {
   assert.equal(tasks[0].codex_status, "idle");
   assert.equal(tasks[1].codex_status, "succeeded");
   assert.equal(tasks[2].codex_status, "failed");
+});
+
+test("buildShortcutTask creates running task with runner pid", () => {
+  const task = buildShortcutTask({
+    shortcut: "running",
+    title: "Shortcut task",
+    runnerPid: 999,
+  });
+
+  assert.equal(task.title, "Shortcut task");
+  assert.equal(task.codex_status, "running");
+  assert.equal(task.codex_runner_pid, 999);
+  assert.match(task.codex_log, /running step/i);
+});
+
+test("toolbox shortcut list is stable", () => {
+  assert.deepEqual(TOOLBOX_SHORTCUTS, [
+    "open",
+    "done",
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+  ]);
 });
 
 test("prepareCodexScenario isolates home and data paths", async () => {

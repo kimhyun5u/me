@@ -41,8 +41,13 @@ input {
   padding: 18px;
 }
 
+.shell[data-mode="emulator"] {
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(240px, 290px);
+}
+
 .hero-panel,
-.workspace-panel > section {
+.workspace-panel > section,
+.toolbox-panel {
   border: 1px solid var(--line);
   border-radius: 28px;
   background: var(--panel);
@@ -58,11 +63,27 @@ input {
   padding: 24px;
 }
 
+.toolbox-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: 0;
+  padding: 20px;
+  overflow: auto;
+}
+
 .hero-panel h1,
 .workspace-panel h2 {
   margin: 0;
   font-family: var(--font-display);
   letter-spacing: -0.03em;
+}
+
+.toolbox-panel h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+  font-size: 1.2rem;
 }
 
 .hero-panel h1 {
@@ -73,6 +94,18 @@ input {
 .stats-grid {
   display: grid;
   gap: 10px;
+}
+
+.toolbox-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.toolbox-meta {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .stat-card {
@@ -125,9 +158,19 @@ input {
   gap: 10px;
 }
 
+.toolbox-input-shell {
+  display: grid;
+  gap: 8px;
+}
+
 .input-shell span {
   color: var(--muted);
   font-size: 0.94rem;
+}
+
+.toolbox-input-shell span {
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 .input-shell input {
@@ -141,8 +184,24 @@ input {
   transition: border-color 180ms ease, transform 180ms ease;
 }
 
+.toolbox-input-shell input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.55);
+  color: var(--text);
+  outline: none;
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+
 .input-shell input:focus {
   border-color: rgba(110, 231, 183, 0.65);
+  transform: translateY(-1px);
+}
+
+.toolbox-input-shell input:focus {
+  border-color: rgba(125, 211, 252, 0.58);
   transform: translateY(-1px);
 }
 
@@ -175,6 +234,27 @@ button:disabled {
   color: var(--text);
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.toolbox-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.toolbox-button {
+  padding: 12px 14px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.toolbox-button:hover:not(:disabled) {
+  background: rgba(125, 211, 252, 0.14);
+}
+
+.toolbox-button.is-danger:hover:not(:disabled) {
+  background: rgba(249, 115, 115, 0.18);
 }
 
 .delete-button:hover:not(:disabled) {
@@ -537,7 +617,8 @@ button:disabled {
 
   .hero-panel,
   .composer-card,
-  .list-card {
+  .list-card,
+  .toolbox-panel {
     padding: 18px;
     border-radius: 22px;
   }

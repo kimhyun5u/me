@@ -52,6 +52,14 @@ function defaultAppConfig() {
   };
 }
 
+function buildEmulatorInfo({ env = process.env } = {}) {
+  return {
+    enabled: env.ME_EMULATOR === "1",
+    profile: env.ME_EMULATOR_PROFILE || null,
+    seed: env.ME_EMULATOR_SEED || null,
+  };
+}
+
 function defaultPersonalAgentsTemplate() {
   return `# Personal Me Instructions
 
@@ -261,11 +269,13 @@ async function buildCodexInfo({
       env,
       osModule,
     }),
+    emulator: buildEmulatorInfo({ env }),
   };
 }
 
 module.exports = {
   appConfigPath,
+  buildEmulatorInfo,
   buildCodexBinaryCandidates,
   buildCodexInfo,
   defaultAppConfig,

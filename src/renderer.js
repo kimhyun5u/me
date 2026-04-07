@@ -1,3 +1,4 @@
+const shell = document.querySelector(".shell");
 const form = document.getElementById("task-form");
 const textInput = document.getElementById("task-text");
 const codexChip = document.getElementById("codex-chip");
@@ -11,6 +12,10 @@ const taskList = document.getElementById("task-list");
 const taskTemplate = document.getElementById("task-template");
 const emptyTemplate = document.getElementById("empty-template");
 const formError = document.getElementById("form-error");
+const emulatorToolbox = document.getElementById("emulator-toolbox");
+const toolboxMeta = document.getElementById("toolbox-meta");
+const toolboxText = document.getElementById("toolbox-text");
+const toolboxButtons = Array.from(document.querySelectorAll(".toolbox-button"));
 
 const CODEX_STATUS = {
   idle: "Codex Idle",
@@ -27,6 +32,11 @@ let codexInfo = {
   available: false,
   command: null,
   defaultWorkspace: "",
+  emulator: {
+    enabled: false,
+    profile: null,
+    seed: null,
+  },
 };
 
 function setBusy(nextBusy) {
@@ -35,8 +45,13 @@ function setBusy(nextBusy) {
   connectCodexButton.disabled = nextBusy;
   refreshButton.disabled = nextBusy;
   textInput.disabled = nextBusy;
+  toolboxText.disabled = nextBusy;
 
   for (const button of taskList.querySelectorAll("button")) {
+    button.disabled = nextBusy;
+  }
+
+  for (const button of toolboxButtons) {
     button.disabled = nextBusy;
   }
 }
@@ -178,6 +193,32 @@ function renderCodexInfo() {
     : "Connect Codex";
 }
 
+function renderEmulatorToolbox() {
+  const emulator = codexInfo.emulator || {};
+  const enabled = Boolean(emulator.enabled);
+
+  emulatorToolbox.hidden = !enabled;
+  shell.dataset.mode = enabled ? "emulator" : "default";
+
+  if (!enabled) {
+    toolboxMeta.textContent = "";
+    toolboxText.value = "";
+    return;
+  }
+
+  const metaParts = [];
+
+  if (emulator.profile) {
+    metaParts.push(`Profile ${emulator.profile}`);
+  }
+
+  if (emulator.seed) {
+    metaParts.push(`Seed ${emulator.seed}`);
+  }
+
+  toolboxMeta.textContent = metaParts.join(" · ");
+}
+
 function renderStats() {
   const completed = tasks.filter((task) => task.completed).length;
 
@@ -282,6 +323,7 @@ async function loadCodexInfo() {
   codexInfo = await window.tasksApi.getCodexInfo();
 
   renderCodexInfo();
+  renderEmulatorToolbox();
   renderList();
 }
 
@@ -293,6 +335,22 @@ async function connectCodex() {
     }
 
     renderCodexInfo();
+    renderEmulatorToolbox();
+    renderList();
+  });
+}
+
+async function runEmulatorAction(action) {
+  await withRequest(async () => {
+    tasks = await window.tasksApi.emulatorAction({
+      action,
+      title: toolboxText.value,
+    });
+
+    if (action.startsWith("add-")) {
+      toolboxText.select();
+    }
+
     renderList();
   });
 }
@@ -329,6 +387,19 @@ form.addEventListener("submit", async (event) => {
 
 refreshButton.addEventListener("click", refreshTasks);
 connectCodexButton.addEventListener("click", connectCodex);
+
+for (const button of toolboxButtons) {
+  button.addEventListener("click", () => runEmulatorAction(button.dataset.action));
+}
+
+toolboxText.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+
+  event.preventDefault();
+  void runEmulatorAction("add-open");
+});
 
 window.tasksApi.onTasksUpdated((nextTasks) => {
   tasks = nextTasks;
