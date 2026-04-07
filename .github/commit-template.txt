@@ -1,0 +1,30 @@
+# Commit message template
+#
+# Format:
+# <type>(optional-scope): <summary>
+#
+# Types:
+# feat, fix, docs, refactor, chore, test, build
+#
+# Example:
+# feat(ui): improve codex log readability
+#
+# Body guidance:
+# - why the change exists
+# - what changed
+# - how it was verified
+#
+# Footer examples:
+# Refs: #123
+# Closes: #123
+
+<type>(<scope>): <summary>
+
+Why:
+- 
+
+What:
+- 
+
+Verification:
+- 

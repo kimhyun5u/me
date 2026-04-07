@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Me</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="hero-panel">
+        <h1>Me</h1>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span>Total</span>
+            <strong id="total-count">0</strong>
+          </article>
+          <article class="stat-card">
+            <span>Open</span>
+            <strong id="open-count">0</strong>
+          </article>
+          <article class="stat-card">
+            <span>Done</span>
+            <strong id="done-count">0</strong>
+          </article>
+        </div>
+      </aside>
+
+      <main class="workspace-panel">
+        <section class="composer-card">
+          <div class="composer-grid">
+            <form id="task-form" class="task-form">
+              <label class="input-shell" for="task-text">
+                <span>Text</span>
+                <input
+                  id="task-text"
+                  name="task-text"
+                  type="text"
+                  maxlength="400"
+                  placeholder="Task"
+                  autocomplete="off"
+                />
+              </label>
+              <button id="add-button" type="submit">Add</button>
+            </form>
+
+            <section class="codex-panel">
+              <div class="codex-status-card">
+                <span class="codex-label">Codex</span>
+                <div class="codex-header">
+                  <span id="codex-chip" class="codex-chip">Checking...</span>
+                </div>
+              </div>
+              <button
+                id="connect-codex-button"
+                class="ghost-button"
+                type="button"
+                hidden
+              >
+                Connect Codex
+              </button>
+            </section>
+          </div>
+
+          <p id="form-error" class="error-text" role="alert"></p>
+        </section>
+
+        <section class="list-card">
+          <div class="list-header">
+            <h2>Tasks</h2>
+            <button id="refresh-button" class="ghost-button" type="button">
+              Refresh
+            </button>
+          </div>
+
+          <ul id="task-list" class="task-list"></ul>
+        </section>
+      </main>
+    </div>
+
+    <template id="task-template">
+      <li class="task-item">
+        <div class="task-content">
+          <div class="task-meta">
+            <span class="task-status"></span>
+            <span class="task-codex-status"></span>
+            <time class="task-date"></time>
+          </div>
+          <h3 class="task-title"></h3>
+          <p class="task-workspace" hidden></p>
+          <div class="task-codex-log" hidden></div>
+          <p class="task-codex-run" hidden></p>
+          <div class="task-codex-output" hidden></div>
+        </div>
+        <div class="task-actions">
+          <button class="delete-button" type="button">Delete</button>
+        </div>
+      </li>
+    </template>
+
+    <template id="empty-template">
+      <li class="empty-state">No tasks</li>
+    </template>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

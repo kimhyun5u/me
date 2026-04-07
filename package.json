@@ -1,0 +1,52 @@
+{
+  "name": "me",
+  "version": "0.1.0",
+  "description": "Cross-platform task manager built with Electron and Rust",
+  "main": "electron/main.js",
+  "author": "kimhyun5u",
+  "license": "MIT",
+  "scripts": {
+    "dev": "npm run build:backend:dev && electron .",
+    "build:backend:dev": "cargo build --manifest-path rust-backend/Cargo.toml",
+    "build:backend:release": "cargo build --release --manifest-path rust-backend/Cargo.toml",
+    "test:backend": "cargo test --manifest-path rust-backend/Cargo.toml",
+    "dist:mac": "npm run build:backend:release && electron-builder --mac",
+    "dist:win": "npm run build:backend:release && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.kimhyun5u.me",
+    "productName": "Me",
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "rust-backend/target/release",
+        "to": "backend",
+        "filter": [
+          "task-backend*"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^41.1.1",
+    "electron-builder": "^26.8.1"
+  }
+}
