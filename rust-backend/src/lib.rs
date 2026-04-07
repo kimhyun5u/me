@@ -3,6 +3,7 @@ use chrono::Utc;
 use directories::ProjectDirs;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -57,6 +58,14 @@ pub struct TaskStore {
 
 impl TaskStore {
     pub fn for_app() -> Result<Self> {
+        if let Some(file_path) = env::var_os("ME_TASKS_FILE") {
+            return Ok(Self::new(PathBuf::from(file_path)));
+        }
+
+        if let Some(data_dir) = env::var_os("ME_DATA_DIR") {
+            return Ok(Self::new(PathBuf::from(data_dir).join("tasks.json")));
+        }
+
         let project_dirs =
             ProjectDirs::from("com", "kimhyun5u", "me").context("unsupported platform")?;
 

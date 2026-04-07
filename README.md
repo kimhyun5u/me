@@ -78,7 +78,36 @@ npm run scenario:codex-broken-config
 npm run scenario:codex-fake
 ```
 
-These scenario launchers use a temporary `ME_HOME_DIR` so you can test Codex setup states without touching your real `~/.me`.
+These scenario launchers use temporary `ME_HOME_DIR` and `ME_DATA_DIR` paths so you can test Codex setup states without touching your real `~/.me` or saved task list.
+
+## Emulator Mode
+
+Launch the full app in an isolated emulator sandbox with fake Codex behavior and seeded demo tasks:
+
+```bash
+npm run emulator
+npm run emulator:missing
+npm run emulator:fail
+```
+
+The default emulator profile uses a slow fake-success Codex flow and seeds demo tasks so you can immediately click through the UI. For custom runs:
+
+```bash
+node scripts/launch-me-emulator.js --profile ready --seed demo --keep-sandbox
+```
+
+Available emulator profiles:
+
+- `missing`: no Codex available
+- `broken-config`: invalid configured Codex path
+- `ready`: fast successful fake Codex
+- `slow`: slower successful fake Codex with multiple log messages
+- `fail`: fake Codex failure path
+
+Available seed profiles:
+
+- `demo`: idle, succeeded, and failed sample tasks
+- `empty`: no initial tasks
 
 ## Package the desktop app
 
